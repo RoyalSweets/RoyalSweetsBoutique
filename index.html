@@ -188,6 +188,26 @@ nav{
 .act-btn.export{border-color:var(--green);color:var(--green);}
 .act-btn.refresh{border-color:var(--blue);color:var(--blue);}
 .act-btn:hover{opacity:.75;}
+   .order-delete-btn{
+  background:#fff0f0;
+  color:#a22b2b;
+  border:1px solid #efb2b2;
+  border-radius:100px;
+  padding:.38rem .85rem;
+  font-family:'Poppins',sans-serif;
+  font-size:.74rem;
+  font-weight:700;
+  cursor:pointer;
+  margin-top:.55rem;
+}
+.order-delete-btn:hover{
+  background:#a22b2b;
+  color:#fff;
+}
+.order-delete-btn:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+}
 .no-orders{text-align:center;padding:3rem;color:var(--gray);font-size:.9rem;background:#fff;border:1px solid var(--border);border-radius:14px;}
 
 .ocard{background:#fff;border:1px solid var(--border);border-radius:16px;padding:1.2rem 1.4rem;margin-bottom:.9rem;}
@@ -1398,6 +1418,7 @@ function renderAdminOrders(orders){
       + '<div class="ocard-items">'+escapeHtml(orderItemsText(o))+'</div>'
       + (o.notes ? '<div class="ocard-items">📝 '+escapeHtml(o.notes)+'</div>' : '')
       + paymentBadgeHtml(o)
+       + '<button class="order-delete-btn" onclick="deleteAdminOrder(\''+escapeHtml(o.id||"")+'\', this)">🗑 Delete Order</button>'
       + '</div>';
   }).join("");
 }
@@ -1443,6 +1464,98 @@ async function loadAdminOrders(){
   }
 }
 window.loadAdminOrders=loadAdminOrders;
+
+   async function deleteAdminOrder(orderId, button){
+
+  if(!orderId) return;
+
+  var order = adminOrdersCache.find(function(o){
+    return o.id === orderId;
+  });
+
+  var customer =
+    order && order.customerName
+      ? order.customerName
+      : "this customer";
+
+  var total =
+    order
+      ? "$"+Number(order.total||0).toFixed(2)
+      : "";
+
+  var confirmed = window.confirm(
+    "Delete order "+orderId+
+    " for "+customer+
+    (total ? " ("+total+")" : "")+
+    "?\n\nThis permanently removes the order from the admin order list."
+  );
+
+  if(!confirmed) return;
+
+  if(button){
+    button.disabled = true;
+    button.textContent = "Deleting...";
+  }
+
+  try{
+
+    var response = await fetch(
+      BACKEND_URL+"/orders/"+encodeURIComponent(orderId),
+      {
+        method:"DELETE",
+        headers:{
+          "Accept":"application/json",
+          "X-Admin-Key":adminKey
+        },
+        cache:"no-store"
+      }
+    );
+
+    var data = await response.json();
+
+    if(response.status===401){
+
+      adminKey="";
+
+      sessionStorage.removeItem(
+        "royalSweetsAdminKey"
+      );
+
+      openAdminLogin();
+
+      throw new Error(
+        "Admin session expired. Please enter the password again."
+      );
+    }
+
+    if(!response.ok || !data.ok){
+
+      throw new Error(
+        data.error ||
+        "Order could not be deleted."
+      );
+    }
+
+    toast("Order deleted.");
+
+    await loadAdminOrders();
+
+  }catch(error){
+
+    if(button){
+      button.disabled = false;
+      button.textContent = "🗑 Delete Order";
+    }
+
+    alert(
+      error && error.message
+        ? error.message
+        : "Unable to delete order."
+    );
+  }
+}
+
+window.deleteAdminOrder=deleteAdminOrder;
 
 function exportOrdersCSV(){
   if(!adminOrdersCache.length){ toast("No orders to export."); return; }
